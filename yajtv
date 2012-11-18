@@ -1,0 +1,150 @@
+#!/usr/bin/perl -w
+
+use Getopt::Long;
+use Pod::Usage;
+use WWW::Curl::Easy;
+use XML::Parser;
+
+my $channel_name = "";
+my $quality = "live";
+my $help = 0;
+my $man = 0;
+my $player = "mplayer";
+my $pretend = 0;
+
+GetOptions("channel=s" => \$channel_name,
+           "quality=s" => \$quality,
+           "player=s" => \$player,
+           "pretend" => \$pretend,
+           "man" => \$man,
+           "help|?" => \$help) or pod2usage(2);
+pod2usage(-verbose => 0) if $help;
+pod2usage(-verbose => 2) if $man;
+pod2usage(-verbose => 0,
+          -message => "No channel name specified") if $channel_name eq "";
+
+my $parser = new XML::Parser(Handlers => {Start => \&expat_start_tag,
+                                          End   => \&expat_end_tag,
+                                          Char  => \&expat_char});
+
+my $in_desired_block = 0;
+my $context = "none";
+my %vals = ("play", "", "token", "", "connect", "");
+# In all the test data I've gathered, the the url is actually
+# live_embed_player.<long token string>.swf, but this works
+my $embedswfurl = "http://www-cdn.jtvnw.net/widgets/" .
+    "live_embed_player.swf?channel=$channel_name" .
+    "&referer=&userAgent=&channel=livetoons8";
+my $found_quality = 0;
+my $curl = WWW::Curl::Easy->new;
+my $ret = 0;
+
+$curl->setopt(CURLOPT_URL, "http://usher.justin.tv/find/$channel_name" .
+              ".xml?type=any");
+$curl->setopt(CURLOPT_WRITEFUNCTION, \&receive_curl_data);
+$ret = $curl->perform; # sets all play/token/connect variables
+
+if ($ret == 0) {
+    $vals{token} =~ s/\"/\\\"/g;
+    if ($found_quality == 0) {
+        pod2usage(-verbose => 0,
+                  -message => "Quality level '$quality' not recognized");
+    }
+    if ($pretend) {
+        print "rtmpdump -r \"$vals{connect}/$vals{play}\" -j \"$vals{token}\"" .
+            " --swfVfy \"$embedswfurl\" -v -o - | \"$player\" -\n";
+    } else {
+        exec "rtmpdump -r \"$vals{connect}/$vals{play}\" -j \"$vals{token}\"" .
+            " --swfVfy \"$embedswfurl\" -v -o - | \"$player\" -";
+    }
+} else {
+    print("Error: $ret ".$curl->strerror($ret)." ".$curl->errbuf."\n");
+}
+
+# shuttle data directly to expat
+sub receive_curl_data {
+    my ($chunk, $context)=@_;
+    $parser->parse($chunk);
+    return length($chunk);
+}
+
+# sets up the current level
+sub expat_start_tag {
+    my ($expat, $element, %attrs) = @_;
+    if ($in_desired_block) {
+        $context = $element;
+    } elsif ($element eq $quality) {
+        $in_desired_block = 1;
+        $found_quality = 1;
+    }
+}
+
+# leave the current level
+sub expat_end_tag {
+    my ($expat, $element) = @_;
+    $context = "none";
+    if ($element eq $quality) {
+        $in_desired_block = 0;
+    }
+}
+
+# handle setting a desired data value
+sub expat_char {
+    my ($expat, $string) = @_;
+    if ($in_desired_block and exists $vals{$context}) {
+        $vals{$context} .= $string;
+    }
+}
+
+__END__
+
+=head1 yajtv
+
+Yet Another JTV ... Thingy ... Viewer
+
+=head1 SYNOPSIS
+
+yajtv --channel=CHANNEL [--quality=QUALITY] [--player=PLAYER] [--pretend]
+
+yajtv [--help|--man]
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<--help>
+
+Show a brief help message.
+
+=item B<--man>
+
+Show a manpage formatted message
+
+=item B<--channel>
+
+Required.  Specify the channel to view.  To view http://justin.tv/Foobar123, use
+--channel=Foobar123
+
+=item B<--player>
+
+Optional.  Specify the program to play the rtmp stream in.  The rtmp data will
+be dumped to stdout, and then piped into `"$PLAYER" -' .  Defaults to `mplayer'
+
+=item B<--pretend>
+
+If set, prints the full command that would be executed as a string, but does not
+execute it.
+
+=item B<--quality>
+
+Optional.  Specify the quality of the channel.  At the time of writing, values
+"live", "iphonelow", and "iphonehigh" are offered by jtv.
+
+=back
+
+=head1 DESCRIPTION
+
+B<yajtv> will pull use B<rtmpdump> to pull data from the specified channel, then
+play it in a media player of your choice.
+
+=cut

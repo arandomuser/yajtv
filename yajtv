@@ -34,7 +34,7 @@ my %vals = ("play", "", "token", "", "connect", "");
 # live_embed_player.<long token string>.swf, but this works
 my $embedswfurl = "http://www-cdn.jtvnw.net/widgets/" .
     "live_embed_player.swf?channel=$channel_name" .
-    "&referer=&userAgent=&channel=livetoons8";
+    "&referer=&userAgent=&channel=$channel_name";
 my $found_quality = 0;
 my $curl = WWW::Curl::Easy->new;
 my $ret = 0;
@@ -50,15 +50,15 @@ if ($ret == 0) {
         pod2usage(-verbose => 0,
                   -message => "Quality level '$quality' not recognized");
     }
-    if ($pretend) {
-        print "rtmpdump -r \"$vals{connect}/$vals{play}\" -j \"$vals{token}\"" .
+    my $command = "rtmpdump -r \"$vals{connect}/$vals{play}\" -j \"$vals{token}\"" .
             " --swfVfy \"$embedswfurl\" -v -o - | \"$player\" -\n";
+    if ($pretend) {
+        print $command;
     } else {
-        exec "rtmpdump -r \"$vals{connect}/$vals{play}\" -j \"$vals{token}\"" .
-            " --swfVfy \"$embedswfurl\" -v -o - | \"$player\" -";
+        exec $command;
     }
 } else {
-    print("Error: $ret ".$curl->strerror($ret)." ".$curl->errbuf."\n");
+    print("Error: $ret " . $curl->strerror($ret) . " " . $curl->errbuf . "\n");
 }
 
 # shuttle data directly to expat

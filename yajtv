@@ -36,6 +36,7 @@ my $embedswfurl = "http://www-cdn.jtvnw.net/widgets/" .
     "live_embed_player.swf?channel=$channel_name" .
     "&referer=&userAgent=&channel=$channel_name";
 my $found_quality = 0;
+my $found_any_qualities = 0;
 my $curl = WWW::Curl::Easy->new;
 my $ret = 0;
 
@@ -47,8 +48,13 @@ $ret = $curl->perform; # sets all play/token/connect variables
 if ($ret == 0) {
     $vals{token} =~ s/\"/\\\"/g;
     if ($found_quality == 0) {
-        pod2usage(-verbose => 0,
-                  -message => "Quality level '$quality' not recognized");
+        if ($found_any_qualities == 1) {
+            pod2usage(-verbose => 0,
+                      -message => "Quality level '$quality' not recognized");
+        } else {
+            pod2usage(-verbose => 0,
+                      -message => "Channel name '$channel_name' not found");
+        }
     }
     my $command = "rtmpdump -r \"$vals{connect}/$vals{play}\" -j \"$vals{token}\"" .
             " --swfVfy \"$embedswfurl\" -v -o - | \"$player\" -\n";
@@ -76,6 +82,8 @@ sub expat_start_tag {
     } elsif ($element eq $quality) {
         $in_desired_block = 1;
         $found_quality = 1;
+    } elsif (!($element eq "nodes")){
+        $found_any_qualities = 1;
     }
 }
 

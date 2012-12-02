@@ -40,6 +40,8 @@ my $found_any_qualities = 0;
 my $curl = WWW::Curl::Easy->new;
 my $ret = 0;
 
+$channel_name = lc($channel_name);
+
 $curl->setopt(CURLOPT_URL, "http://usher.justin.tv/find/$channel_name" .
               ".xml?type=any");
 $curl->setopt(CURLOPT_WRITEFUNCTION, \&receive_curl_data);
